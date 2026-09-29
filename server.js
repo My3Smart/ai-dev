@@ -2582,6 +2582,465 @@ app.get("/parent-school-teachers", async (req, res) => {
   }
 });
 
+
+// ============================================================
+// PARENT ADUAN
+// ============================================================
+// Flow:
+// 1. Parent sends one complete report
+// 2. Find student_id + school_id from parent email
+// 3. Groq extracts pihak, masa, tempat, kejadian
+// 4. Validate extracted information
+// 5. Save into AI database -> aduan table
+// ============================================================
+
+app.post("/aduan", async (req, res) => {
+  try {
+
+    // ========================================================
+    // 1. GET REPORT FROM ANGULAR
+    // ========================================================
+
+    const {
+      parent_email,
+      report
+    } = req.body;
+
+    console.log("==========================================");
+    console.log("ADUAN REQUEST");
+    console.log("Parent email:", parent_email);
+    console.log("Report:", report);
+    console.log("==========================================");
+
+
+    if (
+      !parent_email ||
+      !report ||
+      !String(report).trim()
+    ) {
+      return res.status(400).json({
+        success: false,
+        message: "Sila berikan maklumat aduan."
+      });
+    }
+
+
+    // ========================================================
+    // 2. FIND STUDENT FROM PARENT EMAIL
+    // ========================================================
+
+    const [students] = await schoolDb.query(
+      `
+      SELECT
+        s.id AS student_id,
+        s.school_id AS school_id,
+        s.name AS student_name
+      FROM guardians g
+      INNER JOIN students s
+        ON s.id = g.student_id
+      WHERE LOWER(TRIM(g.email)) = LOWER(TRIM(?))
+      LIMIT 1
+      `,
+      [parent_email]
+    );
+
+
+    console.log("STUDENT LOOKUP:", students);
+
+
+    if (!students || students.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message:
+          "Tiada pelajar ditemui untuk akaun ibu bapa ini."
+      });
+    }
+
+
+    const student = students[0];
+
+    const studentId = student.student_id;
+    const schoolId = student.school_id;
+
+
+    console.log("ADUAN STUDENT ID:", studentId);
+    console.log("ADUAN SCHOOL ID:", schoolId);
+    console.log("ADUAN STUDENT NAME:", student.student_name);
+
+
+    if (!studentId) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "Student ID tidak dapat dikenal pasti."
+      });
+    }
+
+
+    if (!schoolId) {
+      return res.status(400).json({
+        success: false,
+        message:
+          "School ID tidak dapat dikenal pasti."
+      });
+    }
+
+
+    // ========================================================
+    // 3. ASK GROQ TO EXTRACT THE ADUAN INFORMATION
+    // ========================================================
+
+    const aiResponse = await axios.post(
+      "https://api.groq.com/openai/v1/chat/completions",
+      {
+        model: "openai/gpt-oss-20b",
+
+        temperature: 0,
+
+        response_format: {
+          type: "json_object"
+        },
+
+        messages: [
+          {
+            role: "system",
+
+            content: `
+Anda ialah sistem untuk mengekstrak maklumat daripada
+aduan ibu bapa di sekolah.
+
+Ibu bapa akan memberikan satu laporan penuh.
+
+Tugas anda ialah mengenal pasti EMPAT maklumat berikut:
+
+1. pihak
+   Semua pihak yang terlibat dalam kejadian.
+   Contohnya:
+   - pelaku
+   - mangsa
+   - saksi
+   - guru
+   - pelajar lain
+
+2. masa
+   Tarikh dan/atau masa kejadian.
+
+3. tempat
+   Lokasi kejadian.
+
+4. kejadian
+   Penerangan tentang apa yang berlaku.
+
+Anda WAJIB memberikan JSON sahaja dalam format berikut:
+
+{
+  "pihak": "",
+  "masa": "",
+  "tempat": "",
+  "kejadian": ""
+}
+
+PERATURAN PENTING:
+
+- Gunakan hanya maklumat yang diberikan oleh ibu bapa.
+- Jangan mereka-reka maklumat.
+- Jangan meneka maklumat yang tidak diberikan.
+- Kekalkan nama individu seperti yang diberikan.
+- Jika sesuatu maklumat tidak dinyatakan, gunakan null.
+- Jangan gunakan markdown.
+- Jangan tulis penerangan di luar JSON.
+`
+          },
+
+          {
+            role: "user",
+
+            content:
+              `Nama pelajar yang dikaitkan dengan akaun: ` +
+              `${student.student_name}\n\n` +
+              `Laporan ibu bapa:\n${String(report).trim()}`
+          }
+        ]
+      },
+
+      {
+        headers: {
+          Authorization:
+            `Bearer ${process.env.GROQ_API_KEY}`,
+
+          "Content-Type": "application/json"
+        }
+      }
+    );
+
+
+    // ========================================================
+    // 4. GET GROQ RESPONSE
+    // ========================================================
+
+    const rawResult =
+      aiResponse.data &&
+      aiResponse.data.choices &&
+      aiResponse.data.choices[0] &&
+      aiResponse.data.choices[0].message
+        ? aiResponse.data.choices[0].message.content
+        : null;
+
+
+    console.log("RAW ADUAN AI RESULT:");
+    console.log(rawResult);
+
+
+    if (!rawResult) {
+      return res.status(500).json({
+        success: false,
+        message:
+          "AI tidak dapat memproses aduan."
+      });
+    }
+
+
+    // ========================================================
+    // 5. PARSE JSON FROM GROQ
+    // ========================================================
+
+    let extracted;
+
+    try {
+
+      extracted = JSON.parse(rawResult);
+
+    } catch (parseError) {
+
+      console.error(
+        "ADUAN JSON PARSE ERROR:",
+        parseError
+      );
+
+      console.error(
+        "RAW RESPONSE:",
+        rawResult
+      );
+
+
+      return res.status(500).json({
+        success: false,
+        message:
+          "AI tidak dapat membaca maklumat aduan."
+      });
+    }
+
+
+    console.log("EXTRACTED ADUAN:");
+    console.log(extracted);
+
+
+    // ========================================================
+    // 6. CLEAN EXTRACTED VALUES
+    // ========================================================
+
+    const pihak =
+      extracted.pihak
+        ? String(extracted.pihak).trim()
+        : null;
+
+
+    const masa =
+      extracted.masa
+        ? String(extracted.masa).trim()
+        : null;
+
+
+    const tempat =
+      extracted.tempat
+        ? String(extracted.tempat).trim()
+        : null;
+
+
+    const kejadian =
+      extracted.kejadian
+        ? String(extracted.kejadian).trim()
+        : null;
+
+
+    console.log("PIHAK:", pihak);
+    console.log("MASA:", masa);
+    console.log("TEMPAT:", tempat);
+    console.log("KEJADIAN:", kejadian);
+
+
+    // ========================================================
+    // 7. CHECK FOR MISSING INFORMATION
+    // ========================================================
+
+    const missing = [];
+
+
+    if (!pihak) {
+      missing.push("pihak");
+    }
+
+
+    if (!masa) {
+      missing.push("masa");
+    }
+
+
+    if (!tempat) {
+      missing.push("tempat");
+    }
+
+
+    if (!kejadian) {
+      missing.push("kejadian");
+    }
+
+
+    if (missing.length > 0) {
+
+      console.log(
+        "ADUAN MISSING INFORMATION:",
+        missing
+      );
+
+
+      return res.status(400).json({
+        success: false,
+
+        message:
+          "Maklumat aduan belum lengkap. " +
+          "Sila berikan maklumat berikut: " +
+          missing.join(", ") +
+          ".",
+
+        missing: missing
+      });
+    }
+
+
+    // ========================================================
+    // 8. SAVE INTO ADUAN TABLE
+    // ========================================================
+
+    const [result] = await aiDb.query(
+      `
+      INSERT INTO aduan
+      (
+        school_id,
+        student_id,
+        parent_email,
+        pihak,
+        masa,
+        tempat,
+        kejadian,
+        status
+      )
+      VALUES
+      (
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        ?,
+        'pending'
+      )
+      `,
+      [
+        schoolId,
+        studentId,
+        parent_email,
+        pihak,
+        masa,
+        tempat,
+        kejadian
+      ]
+    );
+
+
+    console.log(
+      "ADUAN SAVED SUCCESSFULLY"
+    );
+
+    console.log(
+      "ADUAN ID:",
+      result.insertId
+    );
+
+
+    // ========================================================
+    // 9. SEND SUCCESS RESPONSE TO ANGULAR
+    // ========================================================
+
+    return res.status(201).json({
+      success: true,
+
+      message:
+        "Aduan berjaya dihantar.",
+
+      aduan_id:
+        result.insertId,
+
+      school_id:
+        schoolId,
+
+      student_id:
+        studentId,
+
+      student_name:
+        student.student_name,
+
+      extracted: {
+        pihak,
+        masa,
+        tempat,
+        kejadian
+      }
+    });
+
+
+  } catch (error) {
+
+    // ========================================================
+    // ERROR
+    // ========================================================
+
+    console.error(
+      "=========================================="
+    );
+
+    console.error(
+      "ADUAN ERROR"
+    );
+
+    console.error(
+      error.response?.data ||
+      error.message ||
+      error
+    );
+
+    console.error(
+      "=========================================="
+    );
+
+
+    return res.status(500).json({
+      success: false,
+
+      message:
+        "Gagal memproses aduan.",
+
+      error:
+        error.response?.data?.error?.message ||
+        error.response?.data?.message ||
+        error.message ||
+        "Unknown error"
+    });
+
+  }
+});
+
 const PORT = process.env.PORT || 5001;
 
 app.listen(PORT, () => {

@@ -51,6 +51,17 @@ export class ChatComponent implements OnInit {
 
   loginEmail = '';
 
+  aduanMode = false;
+
+  aduanData = {
+    pihak: '',
+    masa: '',
+    tempat: '',
+    kejadian: ''
+  };
+
+aduanStep: 'pihak' | 'masa' | 'tempat' | 'kejadian' | null = null;
+
   userMode: 'parent' | 'teacher' | null = null;
 
   teacherUserId: number | null = null;
@@ -346,122 +357,310 @@ removeSelectedFile(fileInput: HTMLInputElement): void {
   fileInput.value = '';
 }
 
-  sendMessage(): void {
-    const text = this.userMessage.trim();
+startAduan(): void {
+  if (this.userMode !== 'parent') {
+    return;
+  }
 
-if (
-  this.loading ||
-  this.uploadingFile ||
-  this.checkingAccount
-) {
-  return;
+  this.aduanMode = true;
+
+  this.messages.push({
+    role: 'ai',
+    text:
+      'Baik, saya akan membantu anda membuat aduan.\n\n' +
+      'Sila berikan maklumat berikut:\n' +
+      '1. Pihak - Sebutkan pihak yang terlibat (pelaku, mangsa dan lain lain)\n' +
+      '2. Masa - Bilakah kejadian berlaku?\n' +
+      '3. Tempat - Di manakah kejadian berlaku?\n' +
+      '4. Kejadian - Apakah yang berlaku?'
+  });
 }
 
-if (
-  !text &&
-  !(
+
+handleAduanMessage(text: string): void {
+
+  if (!text.trim()) {
+    return;
+  }
+
+  this.loading = true;
+
+  const payload = {
+    parent_email: this.loginEmail,
+    report: text.trim()
+  };
+
+  console.log('SENDING ADUAN REPORT:', payload);
+
+  this.http.post<any>(
+    `${this.apiUrl}/aduan`,
+    payload
+  ).subscribe({
+
+    next: (response) => {
+
+      this.loading = false;
+      this.aduanMode = false;
+
+      console.log('ADUAN SAVED:', response);
+
+      this.messages.push({
+        role: 'ai',
+        text:
+          'Terima kasih. Aduan anda telah berjaya dihantar.\n\n' +
+          'No. Aduan: ' + response.aduan_id
+      });
+    },
+
+    error: (error: HttpErrorResponse) => {
+
+      this.loading = false;
+
+      console.error('ADUAN ERROR:', error);
+      console.error('ADUAN BACKEND:', error.error);
+
+      this.messages.push({
+        role: 'ai',
+        text:
+          error.error?.message ||
+          'Maaf, aduan tidak dapat dihantar. Sila cuba lagi.'
+      });
+    }
+
+  });
+}
+
+
+sendMessage(): void {
+
+  const text = this.userMessage.trim();
+
+  if (
+    this.loading ||
+    this.uploadingFile ||
+    this.checkingAccount
+  ) {
+    return;
+  }
+
+  if (
+    !text &&
+    !(
+      this.userMode === 'teacher' &&
+      this.selectedFile
+    )
+  ) {
+    return;
+  }
+
+
+  // ========================================
+  // TEACHER FILE UPLOAD
+  // ========================================
+
+  if (
     this.userMode === 'teacher' &&
     this.selectedFile
-  )
-) {
-  return;
-}
+  ) {
 
-if (
-  this.userMode === 'teacher' &&
-  this.selectedFile
-) {
-  this.uploadTeacherDocument(text);
-  return;
-}
+    this.uploadTeacherDocument(text);
 
-    if (!this.userMode) {
-      this.messages.push({
-        role: 'ai',
-        text: 'Your account type could not be identified.'
-      });
+    return;
+  }
 
-      return;
-    }
 
-    if (
-      this.userMode === 'teacher' &&
-      this.teacherUserId === null
-    ) {
-      this.messages.push({
-        role: 'ai',
-        text: 'Teacher account information is unavailable.'
-      });
+  // ========================================
+  // ADUAN MODE
+  // ========================================
 
-      return;
-    }
+  if (
+    this.aduanMode &&
+    this.userMode === 'parent'
+  ) {
 
     this.messages.push({
       role: 'user',
-      text
+      text: text
     });
 
     this.userMessage = '';
-    this.loading = true;
 
-    const requestBody =
-      this.userMode === 'teacher'
-        ? {
-            userId: this.teacherUserId,
-            role: 'teacher',
-            message: text
-          }
-        : {
-            email: this.loginEmail,
-            role: 'parent',
-            message: text
-          };
+    this.handleAduanMessage(text);
 
-    console.log('Chat mode:', this.userMode);
-    console.log('Sending chat request:', requestBody);
-
-    this.http.post<ChatResponse>(
-      `${this.apiUrl}/chat`,
-      requestBody
-    ).subscribe({
-      next: response => {
-        this.loading = false;
-
-        this.messages.push({
-          role: 'ai',
-          text: response.reply || 'Sorry, I could not reply.'
-        });
-
-        if (
-          this.userMode === 'parent' &&
-          response.action === 'OPEN_TEACHER_CHAT' &&
-          response.teacher_id &&
-          response.student_id
-        ) {
-          this.openTeacherChat(
-            response.teacher_id,
-            response.student_id
-          );
-        }
-      },
-
-      error: (error: HttpErrorResponse) => {
-        this.loading = false;
-
-        console.error('Full chat error:', error);
-        console.error('Backend response:', error.error);
-
-        this.messages.push({
-          role: 'ai',
-          text:
-            error.error?.sqlMessage ||
-            error.error?.message ||
-            error.error?.error ||
-            'Something went wrong.'
-        });
-      }
-    });
+    return;
   }
+
+
+  // ========================================
+  // NORMAL CHAT
+  // ========================================
+
+  if (!this.userMode) {
+
+    this.messages.push({
+      role: 'ai',
+      text:
+        'Your account type could not be identified.'
+    });
+
+    return;
+  }
+
+
+  if (
+    this.userMode === 'teacher' &&
+    this.teacherUserId === null
+  ) {
+
+    this.messages.push({
+      role: 'ai',
+      text:
+        'Teacher account information is unavailable.'
+    });
+
+    return;
+  }
+
+
+  this.messages.push({
+    role: 'user',
+    text: text
+  });
+
+
+  this.userMessage = '';
+
+  this.loading = true;
+
+
+  const requestBody =
+    this.userMode === 'teacher'
+
+      ? {
+
+          userId:
+            this.teacherUserId,
+
+          role:
+            'teacher',
+
+          message:
+            text
+
+        }
+
+      : {
+
+          email:
+            this.loginEmail,
+
+          role:
+            'parent',
+
+          message:
+            text
+
+        };
+
+
+  console.log(
+    'Chat mode:',
+    this.userMode
+  );
+
+  console.log(
+    'Sending chat request:',
+    requestBody
+  );
+
+
+  this.http.post<ChatResponse>(
+
+    `${this.apiUrl}/chat`,
+
+    requestBody
+
+  ).subscribe({
+
+    next: response => {
+
+      this.loading = false;
+
+
+      this.messages.push({
+
+        role: 'ai',
+
+        text:
+          response.reply ||
+          'Sorry, I could not reply.'
+
+      });
+
+
+      if (
+
+        this.userMode === 'parent' &&
+
+        response.action ===
+          'OPEN_TEACHER_CHAT' &&
+
+        response.teacher_id &&
+
+        response.student_id
+
+      ) {
+
+        this.openTeacherChat(
+
+          response.teacher_id,
+
+          response.student_id
+
+        );
+
+      }
+
+    },
+
+
+    error: (error: HttpErrorResponse) => {
+
+      this.loading = false;
+
+
+      console.error(
+        'Full chat error:',
+        error
+      );
+
+      console.error(
+        'Backend response:',
+        error.error
+      );
+
+
+      this.messages.push({
+
+        role: 'ai',
+
+        text:
+
+          error.error?.sqlMessage ||
+
+          error.error?.message ||
+
+          error.error?.error ||
+
+          'Something went wrong.'
+
+      });
+
+    }
+
+  });
+
+}
 
   private openTeacherChat(
     teacherId: number,

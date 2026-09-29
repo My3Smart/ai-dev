@@ -165,27 +165,42 @@
     </div>
 
     <button
-      type="button"
-      class="send-button"
-      (click)="sendMessage()"
-      [disabled]="
-        loading ||
-        uploadingFile ||
-        checkingAccount ||
-        (
-          !userMessage.trim() &&
-          !selectedFile
-        )
-      "
-    >
-      {{
-        uploadingFile
-          ? 'Processing...'
-          : loading
-            ? 'Sending...'
-            : 'Send'
-      }}
-    </button>
+  *ngIf="userMode === 'parent'"
+  type="button"
+  class="aduan-button"
+  (click)="startAduan()"
+  [disabled]="
+    loading ||
+    uploadingFile ||
+    checkingAccount
+  "
+>
+  Aduan
+</button>
+
+<button
+  type="button"
+  class="send-button"
+  (click)="sendMessage()"
+  [disabled]="
+    loading ||
+    uploadingFile ||
+    checkingAccount ||
+    (
+      !userMessage.trim() &&
+      !selectedFile
+    )
+  "
+>
+  {{
+    uploadingFile
+      ? 'Processing...'
+      : loading
+        ? 'Sending...'
+        : 'Send'
+  }}
+</button>
+
 
   </div>
 
