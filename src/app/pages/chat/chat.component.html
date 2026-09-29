@@ -6,7 +6,19 @@
   }"
 >
 
+  <div class="chat-header">
   <h2>Skoola Ai</h2>
+
+  <button
+    *ngIf="userMode === 'parent'"
+    type="button"
+    class="aduan-button"
+    (click)="startAduan()"
+    [disabled]="loading || uploadingFile || checkingAccount"
+  >
+    Aduan
+  </button>
+</div>
 
   <div class="chat-box">
 
@@ -164,19 +176,6 @@
 
     </div>
 
-    <button
-  *ngIf="userMode === 'parent'"
-  type="button"
-  class="aduan-button"
-  (click)="startAduan()"
-  [disabled]="
-    loading ||
-    uploadingFile ||
-    checkingAccount
-  "
->
-  Aduan
-</button>
 
 <button
   type="button"

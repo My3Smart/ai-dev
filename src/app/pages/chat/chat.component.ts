@@ -407,8 +407,7 @@ handleAduanMessage(text: string): void {
       this.messages.push({
         role: 'ai',
         text:
-          'Terima kasih. Aduan anda telah berjaya dihantar.\n\n' +
-          'No. Aduan: ' + response.aduan_id
+          'Terima kasih. Aduan anda telah berjaya dihantar.'
       });
     },
 
