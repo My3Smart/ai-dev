@@ -2711,7 +2711,7 @@ aduan ibu bapa di sekolah.
 
 Ibu bapa akan memberikan satu laporan penuh.
 
-Tugas anda ialah mengenal pasti EMPAT maklumat berikut:
+Tugas anda ialah mengenal pasti LIMA maklumat berikut:
 
 1. pihak
    Semua pihak yang terlibat dalam kejadian.
@@ -2722,19 +2722,35 @@ Tugas anda ialah mengenal pasti EMPAT maklumat berikut:
    - guru
    - pelajar lain
 
-2. masa
-   Tarikh dan/atau masa kejadian.
+2. tarikh
+   Tarikh kejadian sahaja.
+   Contohnya:
+   - 19 September 2026
+   - 18 September 2026
+   - 19/2
 
-3. tempat
+   Jangan masukkan masa ke dalam tarikh.
+
+3. masa
+   Masa kejadian sahaja.
+   Contohnya:
+   - 08:30 AM
+   - 9.00 pagi
+   - 3 petang
+
+   Jangan masukkan tarikh ke dalam masa.
+
+4. tempat
    Lokasi kejadian.
 
-4. kejadian
+5. kejadian
    Penerangan tentang apa yang berlaku.
 
 Anda WAJIB memberikan JSON sahaja dalam format berikut:
 
 {
   "pihak": "",
+  "tarikh": "",
   "masa": "",
   "tempat": "",
   "kejadian": ""
@@ -2745,6 +2761,10 @@ PERATURAN PENTING:
 - Gunakan hanya maklumat yang diberikan oleh ibu bapa.
 - Jangan mereka-reka maklumat.
 - Jangan meneka maklumat yang tidak diberikan.
+- Jangan gabungkan tarikh dan masa.
+- "tarikh" mesti mengandungi tarikh sahaja.
+- "masa" mesti mengandungi masa sahaja.
+- Kekalkan format tarikh dan masa seperti yang diberikan oleh ibu bapa.
 - Kekalkan nama individu seperti yang diberikan.
 - Jika sesuatu maklumat tidak dinyatakan, gunakan null.
 - Jangan gunakan markdown.
@@ -2845,6 +2865,12 @@ PERATURAN PENTING:
         : null;
 
 
+    const tarikh =
+      extracted.tarikh
+        ? String(extracted.tarikh).trim()
+        : null;
+
+
     const masa =
       extracted.masa
         ? String(extracted.masa).trim()
@@ -2864,6 +2890,7 @@ PERATURAN PENTING:
 
 
     console.log("PIHAK:", pihak);
+    console.log("TARIKH:", tarikh);
     console.log("MASA:", masa);
     console.log("TEMPAT:", tempat);
     console.log("KEJADIAN:", kejadian);
@@ -2885,6 +2912,9 @@ PERATURAN PENTING:
       missing.push("masa");
     }
 
+    if (!tarikh) {
+      missing.push("tarikh");
+    }
 
     if (!tempat) {
       missing.push("tempat");
@@ -2930,6 +2960,7 @@ PERATURAN PENTING:
         student_id,
         parent_email,
         pihak,
+        tarikh,
         masa,
         tempat,
         kejadian,
@@ -2937,6 +2968,7 @@ PERATURAN PENTING:
       )
       VALUES
       (
+        ?,
         ?,
         ?,
         ?,
@@ -2952,6 +2984,7 @@ PERATURAN PENTING:
         studentId,
         parent_email,
         pihak,
+        tarikh,
         masa,
         tempat,
         kejadian
@@ -2993,6 +3026,7 @@ PERATURAN PENTING:
 
       extracted: {
         pihak,
+        tarikh,
         masa,
         tempat,
         kejadian

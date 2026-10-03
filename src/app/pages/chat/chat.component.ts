@@ -370,7 +370,8 @@ startAduan(): void {
       'Baik, saya akan membantu anda membuat aduan.\n\n' +
       'Sila berikan maklumat berikut:\n' +
       '1. Pihak - Sebutkan pihak yang terlibat (pelaku, mangsa dan lain lain)\n' +
-      '2. Masa - Bilakah kejadian berlaku?\n' +
+      '2. Masa - Bilakah masa kejadian berlaku?\n' +
+      '3. Tarikh - Bilakah tarikh kejadian berlaku?\n' +
       '3. Tempat - Di manakah kejadian berlaku?\n' +
       '4. Kejadian - Apakah yang berlaku?'
   });
